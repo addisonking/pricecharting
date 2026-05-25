@@ -1,2 +1,3 @@
-#!/bin/bash
-/Library/Developer/CommandLineTools/usr/bin/python3 /Users/addis/Code/pricecharting/mcp_server.py
+#!/usr/bin/env bash
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+python3 "$SCRIPT_DIR/mcp_server.py"

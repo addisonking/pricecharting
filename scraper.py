@@ -5,17 +5,18 @@ from typing import Optional
 
 import httpx
 from bs4 import BeautifulSoup
+from fake_useragent import UserAgent
 
 BASE = "https://www.pricecharting.com"
-HEADERS = {
-    "User-Agent": (
-        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:136.0) "
-        "Gecko/20100101 Firefox/136.0"
-    ),
-    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-    "Accept-Language": "en-US,en;q=0.9",
-    "Accept-Encoding": "gzip, deflate",
-}
+
+
+def _headers() -> dict:
+    return {
+        "User-Agent": UserAgent().random,
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.9",
+        "Accept-Encoding": "gzip, deflate",
+    }
 
 
 @dataclass
@@ -85,7 +86,7 @@ def _fetch(url: str, cookies: Optional[dict] = None) -> BeautifulSoup:
     if cookies:
         for k, v in cookies.items():
             jar.set(k, v)
-    with httpx.Client(headers=HEADERS, cookies=jar, follow_redirects=True, timeout=20) as client:
+    with httpx.Client(headers=_headers(), cookies=jar, follow_redirects=True, timeout=20) as client:
         r = client.get(url)
         r.raise_for_status()
         return BeautifulSoup(r.text, "html.parser")
@@ -281,7 +282,7 @@ def _search_and_fetch(query: str, cookies: Optional[dict] = None) -> BeautifulSo
     if cookies:
         for k, v in cookies.items():
             jar.set(k, v)
-    with httpx.Client(headers=HEADERS, cookies=jar, follow_redirects=True, timeout=20) as client:
+    with httpx.Client(headers=_headers(), cookies=jar, follow_redirects=True, timeout=20) as client:
         r = client.get(
             f"{BASE}/search-products",
             params={"type": "prices", "q": query, "go": "Go"},
@@ -297,7 +298,7 @@ def _search_and_fetch(query: str, cookies: Optional[dict] = None) -> BeautifulSo
     if not href:
         raise ValueError("search result missing href")
 
-    with httpx.Client(headers=HEADERS, cookies=jar, follow_redirects=True, timeout=20) as client:
+    with httpx.Client(headers=_headers(), cookies=jar, follow_redirects=True, timeout=20) as client:
         r = client.get(href)
         r.raise_for_status()
         return BeautifulSoup(r.text, "html.parser")

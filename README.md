@@ -1,47 +1,30 @@
-# Unofficial PriceCharting API
+# pricecharting
 
-Scrapes [pricecharting.com](https://www.pricecharting.com) and exposes it as a FastAPI REST API and an MCP server for LM Studio / Claude Desktop.
+unofficial scraper + rest api + mcp server for pricecharting.com
 
-## Install
+## install
 
 ```bash
 pip install -r requirements.txt
 ```
 
-## FastAPI Server
+## rest api
 
 ```bash
-python3 -m uvicorn api:app --host 0.0.0.0 --port 8000
+uvicorn api:app --host 0.0.0.0 --port 8000
 ```
 
-### Endpoints
+- `GET /game/{slug}` — prices + recent sales
+- `GET /search?q=...` — search by title
 
-- `GET /game/{slug}` — get full price data and recent sales  
-  Example: `/game/nintendo-3ds/super-smash-bros-for-nintendo-3ds`
+## mcp server (lm studio)
 
-- `GET /search?q={query}` — search for games  
-  Example: `/search?q=super+smash+bros+3ds`
+add a stdio server in lm studio settings:
 
-Optional `cookie` query param on both endpoints if you need to pass session cookies.
+- **command**: `/path/to/repo/run_mcp.sh`
+- **args**: *(empty)*
 
-## MCP Server (LM Studio)
+### tools
 
-```bash
-python3 /full/path/to/pricecharting/mcp_server.py
-```
-
-In **LM Studio** go to `Settings -> MCP Servers` and add a new stdio server:
-
-- **Command**: `python3`
-- **Arguments**: `/full/path/to/pricecharting/mcp_server.py`
-
-### Tools
-
-- `search_games(query)` — search by title, returns slugs + current prices
-- `get_game_details(slug)` — full data for a game including recent eBay sales
-
-## Notes
-
-- This is an unofficial scraper. The site may change and break things.
-- No cookies are required for basic read-only data.
-- Prices are in USD. Historical chart data is embedded in `chart_data` (cents, monthly averages).
+- `search_games(query)` — search by title
+- `get_game_details(slug)` — prices + recent sales
