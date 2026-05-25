@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "pricecharting": {
+      "command": "python3",
+      "args": [
+        "/Users/addis/Code/pricecharting/mcp_server.py"
+      ],
+      "env": {}
+    }
+  }
+}
