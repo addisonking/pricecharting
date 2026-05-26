@@ -83,8 +83,8 @@ def _compact_sales(data, condition: str, limit: int):
 
 TOOLS = [
     {
-        "name": "search_games",
-        "description": "Search PriceCharting for games by title. Returns name, slug, and current prices.",
+        "name": "search_products",
+        "description": "Search PriceCharting for games, consoles, or hardware by title. Returns name, slug, and current prices.",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -97,28 +97,28 @@ TOOLS = [
         },
     },
     {
-        "name": "get_game_prices",
-        "description": "Get current prices and sales volume for a game. Use the slug from search_games.",
+        "name": "get_product_prices",
+        "description": "Get current prices and sales volume for a game, console, or hardware item. Use the slug from search_products.",
         "inputSchema": {
             "type": "object",
             "properties": {
                 "slug": {
                     "type": "string",
-                    "description": "PriceCharting game slug, e.g. 'nintendo-3ds/super-smash-bros-for-nintendo-3ds'",
+                    "description": "PriceCharting product slug, e.g. 'nintendo-3ds/super-smash-bros-for-nintendo-3ds' or 'nintendo-3ds/new-nintendo-3ds-xl-black'",
                 },
             },
             "required": ["slug"],
         },
     },
     {
-        "name": "get_game_sales",
-        "description": "Get recent completed sales for a specific condition. Use the slug from search_games.",
+        "name": "get_product_sales",
+        "description": "Get recent completed sales for a specific condition. Use the slug from search_products.",
         "inputSchema": {
             "type": "object",
             "properties": {
                 "slug": {
                     "type": "string",
-                    "description": "PriceCharting game slug",
+                    "description": "PriceCharting product slug",
                 },
                 "condition": {
                     "type": "string",
@@ -164,14 +164,14 @@ def handle_request(req: dict) -> dict:
         name = params.get("name")
         args = params.get("arguments", {})
         try:
-            if name == "search_games":
+            if name == "search_products":
                 return _json(json.dumps({"results": _search(args.get("query", ""))}), req_id)
 
-            if name == "get_game_prices":
+            if name == "get_product_prices":
                 data = get_game(args.get("slug", ""))
                 return _json(json.dumps(_compact_prices(data)), req_id)
 
-            if name == "get_game_sales":
+            if name == "get_product_sales":
                 data = get_game(args.get("slug", ""))
                 result = _compact_sales(
                     data,
