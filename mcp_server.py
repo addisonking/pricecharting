@@ -4,11 +4,16 @@
 import sys
 import json
 import traceback
+import asyncio
+from concurrent.futures import ThreadPoolExecutor
 
 from scraper import get_game
 import httpx
 from bs4 import BeautifulSoup
 from scraper import _headers
+
+MAX_CONCURRENT = 3
+_executor = ThreadPoolExecutor(max_workers=MAX_CONCURRENT)
 
 BASE = "https://www.pricecharting.com"
 
@@ -26,7 +31,10 @@ def _search(query: str) -> list:
         )
         r.raise_for_status()
         soup = BeautifulSoup(r.text, "html.parser")
+    return _parse_search_results(soup)
 
+
+def _parse_search_results(soup) -> list:
     results = []
     for tr in soup.select("#search-results tbody tr"):
         title_a = tr.select_one("td.title a")
@@ -45,6 +53,25 @@ def _search(query: str) -> list:
             "new": new.get_text(strip=True) if new else None,
         })
     return results
+
+
+async def _search_async(query: str, sem: asyncio.Semaphore) -> dict:
+    async with sem:
+        async with httpx.AsyncClient(headers=_headers(), follow_redirects=True, timeout=20) as client:
+            r = await client.get(
+                f"{BASE}/search-products",
+                params={"type": "prices", "q": query, "go": "Go"},
+            )
+            r.raise_for_status()
+            soup = BeautifulSoup(r.text, "html.parser")
+        return {"query": query, "results": _parse_search_results(soup)}
+
+
+async def _get_game_async(slug: str, sem: asyncio.Semaphore) -> dict:
+    async with sem:
+        loop = asyncio.get_running_loop()
+        data = await loop.run_in_executor(_executor, get_game, slug)
+    return {"slug": slug, **{"name": data.name, "console": data.console, "prices": _compact_prices(data)["prices"]}}
 
 
 def _compact_prices(data):
@@ -134,6 +161,36 @@ TOOLS = [
             "required": ["slug", "condition"],
         },
     },
+    {
+        "name": "search_products_batch",
+        "description": "Search PriceCharting for multiple games/consoles at once. Runs up to 3 searches concurrently. Returns results keyed by each query.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "queries": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "List of game titles to search for (max 10)",
+                },
+            },
+            "required": ["queries"],
+        },
+    },
+    {
+        "name": "get_product_prices_batch",
+        "description": "Get current prices for multiple products at once. Runs up to 3 fetches concurrently. Returns prices keyed by each slug.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "slugs": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "List of product slugs to fetch prices for (max 10)",
+                },
+            },
+            "required": ["slugs"],
+        },
+    },
 ]
 
 
@@ -180,6 +237,24 @@ def handle_request(req: dict) -> dict:
                 )
                 return _json(json.dumps(result), req_id)
 
+            if name == "search_products_batch":
+                queries = args.get("queries", [])
+                if not isinstance(queries, list) or not queries:
+                    return {"jsonrpc": "2.0", "id": req_id, "error": {"code": -32602, "message": "queries must be a non-empty array"}}
+                if len(queries) > 10:
+                    return {"jsonrpc": "2.0", "id": req_id, "error": {"code": -32602, "message": "max 10 queries per batch"}}
+                results = asyncio.run(_batch_search(queries))
+                return _json(json.dumps(results), req_id)
+
+            if name == "get_product_prices_batch":
+                slugs = args.get("slugs", [])
+                if not isinstance(slugs, list) or not slugs:
+                    return {"jsonrpc": "2.0", "id": req_id, "error": {"code": -32602, "message": "slugs must be a non-empty array"}}
+                if len(slugs) > 10:
+                    return {"jsonrpc": "2.0", "id": req_id, "error": {"code": -32602, "message": "max 10 slugs per batch"}}
+                results = asyncio.run(_batch_prices(slugs))
+                return _json(json.dumps(results), req_id)
+
             return {"jsonrpc": "2.0", "id": req_id, "error": {"code": -32601, "message": f"unknown tool: {name}"}}
         except Exception as exc:
             return {
@@ -189,6 +264,18 @@ def handle_request(req: dict) -> dict:
             }
 
     return {"jsonrpc": "2.0", "id": req_id, "error": {"code": -32601, "message": f"method not found: {method}"}}
+
+
+async def _batch_search(queries: list) -> list:
+    sem = asyncio.Semaphore(MAX_CONCURRENT)
+    tasks = [_search_async(q, sem) for q in queries]
+    return await asyncio.gather(*tasks)
+
+
+async def _batch_prices(slugs: list) -> list:
+    sem = asyncio.Semaphore(MAX_CONCURRENT)
+    tasks = [_get_game_async(s, sem) for s in slugs]
+    return await asyncio.gather(*tasks)
 
 
 def main():
