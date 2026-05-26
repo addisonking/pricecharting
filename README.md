@@ -27,4 +27,5 @@ add a stdio server in lm studio settings:
 ### tools
 
 - `search_games(query)` — search by title
-- `get_game_details(slug)` — prices + recent sales
+- `get_game_prices(slug)` — current prices + volume
+- `get_game_sales(slug, condition, limit=5)` — recent sales for one condition
