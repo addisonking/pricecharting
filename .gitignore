@@ -1,0 +1,15 @@
+# python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.env
+.venv/
+venv/
+
+# node
+node_modules/
+*.log
+
+# collection pricer (local only)
+collection-pricer/
