@@ -36,6 +36,7 @@ class GameOut(BaseModel):
     manual_only: Optional[PricePointOut]
     chart_data: Optional[dict]
     recent_sales: Optional[dict[str, list[SaleOut]]]
+    cached: bool  # Whether data came from cache
 
 
 def _to_out(data: GameData) -> GameOut:
@@ -64,6 +65,7 @@ def _to_out(data: GameData) -> GameOut:
         manual_only=pp(data.manual_only),
         chart_data=data.chart_data,
         recent_sales={k: [sl(s) for s in v] for k, v in (data.recent_sales or {}).items()},
+        cached=data.cached,
     )
 
 

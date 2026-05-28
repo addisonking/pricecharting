@@ -1,5 +1,6 @@
 import re
 import json
+import os
 from dataclasses import dataclass
 from typing import Optional
 
@@ -7,7 +8,13 @@ import httpx
 from bs4 import BeautifulSoup
 from fake_useragent import UserAgent
 
+from cache import init_cache, get_cache, set_cache, cache_key_from_url
+
 BASE = "https://www.pricecharting.com"
+CACHE_TTL = int(os.getenv("CACHE_TTL", "3600"))  # default 1 hour
+
+# Initialize cache on module load
+init_cache()
 
 
 def _headers() -> dict:
@@ -50,6 +57,7 @@ class GameData:
     manual_only: Optional[PricePoint] = None
     chart_data: dict = None
     recent_sales: dict = None
+    cached: bool = False  # Whether this data came from cache
 
 
 def _parse_price(text: str) -> Optional[float]:
@@ -81,7 +89,15 @@ def _parse_volume(elem) -> Optional[str]:
     return None
 
 
-def _fetch(url: str, cookies: Optional[dict] = None) -> BeautifulSoup:
+def _fetch(url: str, cookies: Optional[dict] = None) -> tuple[BeautifulSoup, bool]:
+    """Fetch page from URL or cache. Returns (soup, was_cached)."""
+    # Try cache first
+    cache_key = cache_key_from_url(url, cookies)
+    cached = get_cache(cache_key)
+    if cached:
+        soup = BeautifulSoup(cached["value"]["html"], "html.parser")
+        return soup, True
+    
     jar = httpx.Cookies()
     if cookies:
         for k, v in cookies.items():
@@ -89,7 +105,11 @@ def _fetch(url: str, cookies: Optional[dict] = None) -> BeautifulSoup:
     with httpx.Client(headers=_headers(), cookies=jar, follow_redirects=True, timeout=20) as client:
         r = client.get(url)
         r.raise_for_status()
-        return BeautifulSoup(r.text, "html.parser")
+        soup = BeautifulSoup(r.text, "html.parser")
+    
+    # Cache the result
+    set_cache(cache_key, {"html": r.text}, CACHE_TTL)
+    return soup, False
 
 
 def _extract_chart_data(soup: BeautifulSoup) -> Optional[dict]:
@@ -245,11 +265,19 @@ def get_game(game_id: str, cookies: Optional[dict] = None) -> GameData:
         url = f"{BASE}/game/{game_id}"
 
     try:
-        soup = _fetch(url, cookies)
+        soup, is_cached = _fetch(url, cookies)
     except httpx.HTTPStatusError as exc:
         if exc.response.status_code == 404 and "/" not in game_id:
             # search fallback
-            soup = _search_and_fetch(game_id, cookies)
+            soup, is_cached = _search_and_fetch(game_id, cookies)
+        else:
+            raise
+    except Exception as exc:
+        # If fetch fails and cache is not initialized, return fresh data
+        from cache import _TURSO_CONFIGURED
+        if not _TURSO_CONFIGURED:
+            # Need to fetch without cache
+            soup, is_cached = _fetch(url, cookies)
         else:
             raise
 
@@ -273,32 +301,58 @@ def get_game(game_id: str, cookies: Optional[dict] = None) -> GameData:
         manual_only=prices.get("manual_only"),
         chart_data=chart,
         recent_sales=sales,
+        cached=is_cached,
     )
 
 
-def _search_and_fetch(query: str, cookies: Optional[dict] = None) -> BeautifulSoup:
-    """Search for a game and return the first result's page soup."""
-    jar = httpx.Cookies()
-    if cookies:
-        for k, v in cookies.items():
-            jar.set(k, v)
-    with httpx.Client(headers=_headers(), cookies=jar, follow_redirects=True, timeout=20) as client:
-        r = client.get(
-            f"{BASE}/search-products",
-            params={"type": "prices", "q": query, "go": "Go"},
-        )
-        r.raise_for_status()
-        soup = BeautifulSoup(r.text, "html.parser")
+def _search_and_fetch(query: str, cookies: Optional[dict] = None) -> tuple[BeautifulSoup, bool]:
+    """Search for a game and return the first result's page soup. Returns (soup, was_cached)."""
+    cache_key = cache_key_from_url(f"{BASE}/search-products", cookies)
+    cached = get_cache(cache_key)
+    search_cached = False
+    
+    if cached:
+        search_soup = BeautifulSoup(cached["value"]["html"], "html.parser")
+        search_cached = True
+    else:
+        jar = httpx.Cookies()
+        if cookies:
+            for k, v in cookies.items():
+                jar.set(k, v)
+        with httpx.Client(headers=_headers(), cookies=jar, follow_redirects=True, timeout=20) as client:
+            r = client.get(
+                f"{BASE}/search-products",
+                params={"type": "prices", "q": query, "go": "Go"},
+            )
+            r.raise_for_status()
+            search_soup = BeautifulSoup(r.text, "html.parser")
+        # Cache the search results (shorter TTL for freshness)
+        set_cache(cache_key, {"html": r.text}, 300)  # 5 min TTL for search
 
     # grab first result link
-    first = soup.select_one("#search-results tbody tr td.title a")
+    first = search_soup.select_one("#search-results tbody tr td.title a")
     if not first:
         raise ValueError(f"no search results for: {query}")
     href = first.get("href", "")
     if not href:
         raise ValueError("search result missing href")
 
+    # Cache the product page fetch
+    product_cache_key = cache_key_from_url(href, cookies)
+    cached_product = get_cache(product_cache_key)
+    product_cached = False
+    if cached_product:
+        return BeautifulSoup(cached_product["value"]["html"], "html.parser"), True
+    
+    jar = httpx.Cookies()
+    if cookies:
+        for k, v in cookies.items():
+            jar.set(k, v)
     with httpx.Client(headers=_headers(), cookies=jar, follow_redirects=True, timeout=20) as client:
         r = client.get(href)
         r.raise_for_status()
-        return BeautifulSoup(r.text, "html.parser")
+        soup = BeautifulSoup(r.text, "html.parser")
+    
+    # Cache the product page
+    set_cache(product_cache_key, {"html": r.text}, CACHE_TTL)
+    return soup, search_cached

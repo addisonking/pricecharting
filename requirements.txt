@@ -4,3 +4,5 @@ fastapi
 uvicorn
 pydantic
 fake-useragent
+turso
+python-dotenv

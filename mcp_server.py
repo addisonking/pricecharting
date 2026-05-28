@@ -83,6 +83,7 @@ def _compact_prices(data):
         "name": data.name,
         "console": data.console,
         "slug": data.slug,
+        "cached": getattr(data, 'cached', False),
         "prices": {
             "loose": pp(data.loose),
             "complete": pp(data.complete),

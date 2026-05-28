@@ -13,3 +13,4 @@ node_modules/
 
 # collection pricer (local only)
 collection-pricer/
+cache.db
