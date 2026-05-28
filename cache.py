@@ -14,13 +14,11 @@ load_dotenv()
 _TURSO_CONFIGURED = False
 DB_URL = os.getenv("TURSO_DATABASE_URL")
 DB_AUTH_TOKEN = os.getenv("TURSO_AUTH_TOKEN")
+_DISABLE_CACHE = os.getenv("DISABLE_CACHE", "").lower() in ("1", "true", "yes")
 
-# If no env var set, default to local file but don't create it unless asked
+# If no env var set, default to local file
 if not DB_URL:
     DB_URL = "file:./cache.db"
-    _DEFAULT_FILE = True
-else:
-    _DEFAULT_FILE = False
 
 
 def _get_connection() -> sqlite3.Connection:
@@ -52,13 +50,7 @@ def init_cache() -> None:
     """Initialize the cache database schema."""
     global _TURSO_CONFIGURED
     
-    # No DB URL configured at all
-    if not DB_URL:
-        _TURSO_CONFIGURED = False
-        return
-    
-    # If using default local file (no env var set) and it doesn't exist, skip caching
-    if _DEFAULT_FILE and not os.path.exists(DB_URL.replace("file:", "")):
+    if _DISABLE_CACHE:
         _TURSO_CONFIGURED = False
         return
     

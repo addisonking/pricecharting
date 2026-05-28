@@ -9,31 +9,26 @@ works for games, consoles, and hardware
 pip install -r requirements.txt
 ```
 
-## config (optional)
+## caching
 
-create a `.env` file for Turso caching:
-
-```bash
-cp .env.example .env
-# edit .env with your Turso DB URL and token
-```
-
-get your Turso credentials from https://docs.turso.tech
-
-cache is optional — without config, data is fetched fresh each request. with Turso configured:
+caching works out of the box with a local SQLite database (`cache.db`). no config needed.
 
 - default cache TTL: 1 hour (3600s)
 - search results cached for 5 minutes
-- requests are served instantly from cache when possible
+- all API responses include `cached: true` when served from cache
 
-all API responses include a `cached` field:
-```json
-{
-  "name": "Super Smash Bros for Nintendo 3DS",
-  "cached": true,
-  "loose": {"price": 12.99, ...}
-}
+### turso (optional)
+
+for a persistent remote cache, create a `.env`:
+
+```bash
+cp .env.example .env
+# fill in your Turso DB URL and token from https://docs.turso.tech
 ```
+
+### disable cache
+
+set `DISABLE_CACHE=1` in your environment to fetch fresh data every request.
 
 ## rest api
 
